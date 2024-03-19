@@ -182,24 +182,6 @@ bool mqttCMConnectBroker()
 			username = clientId;
 			MqttCMInfo("clientId is %s username is %s\n", clientId, username);
 
-			//execute_mqtt_script(OPENSYNC_CERT);
-			const char *testfile = "/tmp/testmqttfile";
-			if (!freopen(testfile, "r", stdin))
-			{
-				perror("freopen failed\n");
-				return EXIT_FAILURE;
-			}
-
-			int value;
-			while (scanf("%d", &value) == 1)
-			{
-				// Process the data as needed
-				MqttCMInfo("Read value: %d\n", value);
-			}
-
-			// Close the redirected stdin
-			fclose(stdin);
-
 			if(clientId !=NULL)
 			{
 				mosq = mosquitto_new(clientId, clean_session, NULL);
@@ -460,7 +442,7 @@ int password_callback(char *buf, int size, int rwflag, void *userdata)
 	MqttCMInfo("Inside Password_callback\n");
 	char *passphrase = NULL;
 
-	get_from_file("PASSKEY=", &passphrase, MQTT_CONFIG_FILE);
+	get_from_file("private_key_passwd=", &passphrase, "/dev/stdin");
 
 	if( !passphrase )
 	{
@@ -876,7 +858,7 @@ void get_from_file(char *key, char **val, char *filepath)
         {
                 char str[255] = {'\0'};
                 while (fgets(str, sizeof(str), fp) != NULL)
-                {
+                {MqttCMInfo("val fetched is %s,%s\n", str,filepath);
                     char *value = NULL;
 
                     if(NULL != (value = strstr(str, key)))
@@ -898,7 +880,7 @@ void get_from_file(char *key, char **val, char *filepath)
         }
         else
         {
-                MqttCMDebug("val fetched is %s\n", *val);
+                MqttCMInfo("val fetched is %s, %s\n", *val,filepath);
         }
 }
 
