@@ -218,7 +218,10 @@ bool mqttCMConnectBroker()
 					tls->keyfile = KEYFILE;
 					tls->tls_version = MOSQ_TLS_VERSION;
 
+					MqttCMInfo("Before pwd_callback \n");
 					rc = mosquitto_tls_set(mosq, tls->cafile, tls->capath, tls->certfile, tls->keyfile, password_callback);
+				        MqttCMInfo("After pwd_callback \n");
+				        
 					MqttCMInfo("mosquitto_tls_set rc %d\n", rc);
 					if(rc)
 					{
@@ -441,8 +444,10 @@ int password_callback(char *buf, int size, int rwflag, void *userdata)
 {
 	MqttCMInfo("Inside Password_callback\n");
 	char *passphrase = NULL;
-
+	
+	MqttCMInfo("Before get_from_file\n");
 	get_from_file("private_key_passwd=", &passphrase, "/dev/stdin");
+	MqttCMInfo("After get_from_file : passphrase: %s \n", passphrase);
 
 	if( !passphrase )
 	{
@@ -450,6 +455,7 @@ int password_callback(char *buf, int size, int rwflag, void *userdata)
 	}
 	else
 	{
+		MqttCMInfo("Inside else strncpy: buf =%s , size=%d \n", buf, size);
 		strncpy(buf, passphrase, size);
 		buf[size - 1] = '\0';
 	}
@@ -852,19 +858,23 @@ int publish_notify_mqtt(char *pub_topic, void *payload, ssize_t len)
 
 void get_from_file(char *key, char **val, char *filepath)
 {
+	MqttCMInfo("Inside get_from_file\n");
+	MqttCMInfo("key= %s, val = %s, filepath = %s\n", key, *val, filepath);
         FILE *fp = fopen(filepath, "r");
-
+        
         if (NULL != fp)
         {
                 char str[255] = {'\0'};
                 while (fgets(str, sizeof(str), fp) != NULL)
-                {MqttCMInfo("val fetched is %s,%s\n", str,filepath);
+                {
+                MqttCMInfo("val fetched is %s,%s\n", str,filepath);
                     char *value = NULL;
 
                     if(NULL != (value = strstr(str, key)))
                     {
                         value = value + strlen(key);
                         value[strlen(value)-1] = '\0';
+                        MqttCMInfo("Value: %s \n", value);
                         *val = strdup(value);
                         break;
                     }
@@ -872,6 +882,7 @@ void get_from_file(char *key, char **val, char *filepath)
                 }
                 fclose(fp);
         }
+        MqttCMInfo("key= %s, val = %s, filepath = %s\n", key,*val, filepath);
 
         if (NULL == *val)
         {
