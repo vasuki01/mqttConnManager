@@ -445,13 +445,13 @@ void custom_log_callback(struct mosquitto *mosq, void *userdata, int level, cons
 {
     // Control logging based on levels
     if (level == MOSQ_LOG_DEBUG) {
-        MqttCMDebug("Debug log message: %s\n", message);
+        MqttCMInfo("Debug log message: %s\n", message);
     } else if (level == MOSQ_LOG_INFO) {
-        MqttCMDebug("Info log message: %s\n", message);
+        MqttCMInfo("Info log message: %s\n", message);
     } else if (level == MOSQ_LOG_NOTICE) {
-        MqttCMDebug("Notice log message: %s\n", message);
+        MqttCMInfo("Notice log message: %s\n", message);
     } else if (level == MOSQ_LOG_WARNING) {
-        MqttCMDebug("Warning log message: %s\n", message);
+        MqttCMInfo("Warning log message: %s\n", message);
     } else if (level == MOSQ_LOG_ERR) {
         MqttCMError("Error log message: %s\n", message);
     }
@@ -858,6 +858,50 @@ int mqtt_retry(mqtt_timer_t *timer)
 	}
 	return MQTT_DELAY_TAKEN;
 }
+void print_mqtt_properties(const mosquitto_property *props)
+{
+    const mosquitto_property *prop = props;
+    
+    while (prop != NULL) {
+        int identifier = mosquitto_property_identifier(prop); // Get the property identifier
+        MqttCMInfo("Property Identifier: %d\n", identifier);
+        
+        // Now handle each type of property based on its identifier
+        switch (identifier) {
+                
+            case MQTT_PROP_CORRELATION_DATA:
+                {
+                    uint16_t length;
+                    unsigned char *binvalue;
+                    mosquitto_property_read_binary(prop, MQTT_PROP_CORRELATION_DATA, (void **)&binvalue, &length, false);
+                    MqttCMInfo("  Correlation Data: ");
+                    for (size_t i = 0; i < length; i++) {
+                        MqttCMInfo("%02x ", binvalue[i]);
+                    }
+                    MqttCMInfo("\n");
+                    free(binvalue);
+                }
+                break;
+                
+            case MQTT_PROP_USER_PROPERTY:
+                {
+                    char *key, *value;
+                    mosquitto_property_read_string_pair(prop, MQTT_PROP_USER_PROPERTY, &key, &value, false);
+                    MqttCMInfo("  User Property: %s = %s\n", key, value);
+                    free(key);
+                    free(value);
+                }
+                break;
+
+            default:
+                MqttCMInfo("  Unknown Property: %d\n", identifier);
+                break;
+        }
+
+        // Move to the next property in the linked list
+        prop = prop->next;
+    }
+}
 
 /* This function is used to publish the messages received from components to Broker.*/
 int publish_notify_mqtt(char *pub_topic, void *payload, ssize_t len)
@@ -865,6 +909,23 @@ int publish_notify_mqtt(char *pub_topic, void *payload, ssize_t len)
         int rc;
 
 	mosquitto_property *props = NULL;
+	MqttCMInfo("Inside publish_notify_mqtt..\n");
+
+	  //coreelation data
+	 // For demonstration purposes, we assume the correlation data is available in the callback
+        // Normally, we would extract this in the callback function
+   	unsigned char correlation_data[] = {0x72, 0x65, 0x71, 0x75, 0x65, 0x73};  // Example binary data (for demonstration)
+    	size_t correlation_data_len = sizeof(correlation_data);
+
+    	// Add correlation data to the message properties
+    	int ret = mosquitto_property_add_binary(&props, MQTT_PROP_CORRELATION_DATA, correlation_data, correlation_data_len);
+
+    if (ret != MOSQ_ERR_SUCCESS) {
+        MqttCMError("Failed to add correlation data property: %d\n", ret);
+   	 } 
+     print_mqtt_properties(props);
+	 
+   // ----------------------
 	uuid_t uuid;
 	uuid_generate_time(uuid);
 
@@ -873,16 +934,44 @@ int publish_notify_mqtt(char *pub_topic, void *payload, ssize_t len)
 
 	MqttCMInfo("uuidv1 generated is %s\n", uuid_str);
 
-	int ret = mosquitto_property_add_string_pair(&props, MQTT_PROP_USER_PROPERTY, "uuid", uuid_str);
+        ret = mosquitto_property_add_string_pair(&props, MQTT_PROP_USER_PROPERTY, "uuid", uuid_str);
 
 	if(ret != MOSQ_ERR_SUCCESS)
 	{
 		MqttCMError("Failed to add property: %d\n", ret);
 	}
 
+    /*// ---- Print Properties to JSON ----
+    #ifdef WITH_CJSON
+    // Create a root JSON object to hold the properties
+    cJSON *root = cJSON_CreateObject();
+    if (root == NULL) {
+        MqttCMError("Failed to create root JSON object\n");
+        return MOSQ_ERR_NOMEM;
+    }
+
+    // Print the properties in JSON format
+    int print_ret = json_print_properties(root, props);
+    if (print_ret != MOSQ_ERR_SUCCESS) {
+        MqttCMError("Failed to print properties to JSON: %d\n", print_ret);
+        cJSON_Delete(root);
+        return print_ret;
+    }
+
+    // Print the serialized JSON string (for debugging purposes)
+    char *json_str = cJSON_Print(root);
+    if (json_str) {
+        MqttCMInfo("Properties as JSON: %s\n", json_str);
+        free(json_str);  // Don't forget to free the string
+    }
+
+    cJSON_Delete(root);  // Don't forget to free the JSON object
+    #endif*/
+    print_mqtt_properties(props);
+
 	rc = mosquitto_publish_v5(mosq, NULL, pub_topic, len, payload, 2, false, props);
 
-	MqttCMDebug("Publish rc %d\n", rc);
+	MqttCMInfo("Publish rc %d\n", rc);
         if(rc != MOSQ_ERR_SUCCESS)
 	{
                 MqttCMError("Error publishing: %s and publish rc: %d\n", mosquitto_strerror(rc), rc);
@@ -893,7 +982,7 @@ int publish_notify_mqtt(char *pub_topic, void *payload, ssize_t len)
 	}
 	mosquitto_loop(mosq, 0, 1);
 	mosquitto_property_free_all(&props);
-	MqttCMDebug("Publish mosquitto_loop done\n");
+	MqttCMInfo("Publish mosquitto_loop done\n");
 	return rc;
 }
 
@@ -1340,7 +1429,7 @@ rbusError_t MqttPublishMethodHandler(rbusHandle_t handle, char const* methodName
 
 	//char *pub_get_topic = NULL;
 
-	MqttCMDebug("methodHandler called: %s\n", methodName);
+	MqttCMInfo("Publish methodHandler called: %s\n", methodName);
 	//rbusObject_fwrite(inParams, 1, stdout);
 	if(strncmp(methodName, MQTT_PUBLISH_PARAM, maxParamLen) == 0)
 	{
@@ -1393,7 +1482,7 @@ rbusError_t MqttPublishMethodHandler(rbusHandle_t handle, char const* methodName
 				qos_str = (char *) rbusValue_GetString(qos,NULL);
 				if(qos_str)
 				{
-					MqttCMDebug("qos from TR181 is %s\n",qos_str);
+					MqttCMInfo("qos from TR181 is %s\n",qos_str);
 				}
 			}
 		}
@@ -1405,15 +1494,15 @@ rbusError_t MqttPublishMethodHandler(rbusHandle_t handle, char const* methodName
 
 		if (payload_bytes != NULL)
 		{
-			MqttCMDebug("Length of the payload bytes before publishing is %d\n", msg_len);
+			MqttCMInfo("Length of the payload bytes before publishing is %d\n", msg_len);
 			publish_notify_mqtt(topic_str, payload_bytes, msg_len);
 		}
 		else if (payload_str != NULL)
                 {
-			MqttCMDebug("Length of the payload string before publishing is %zu\n", strlen(payload_str));
+			MqttCMInfo("Length of the payload string before publishing is %zu\n", strlen(payload_str));
 			publish_notify_mqtt(topic_str, payload_str, strlen(payload_str));
 		}
-		MqttCMDebug("publish_notify_mqtt done\n");
+		MqttCMInfo("publish_notify_mqtt done\n");
 	}
 	else 
 	{

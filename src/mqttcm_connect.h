@@ -33,6 +33,9 @@
 #include <arpa/inet.h>
 #include <mosquitto.h>
 #include <mqtt_protocol.h>
+//#include <cJSON.h>
+#include <property_mosq.h>  
+#include <mosquitto_broker.h>
 #include <rbus/rbus.h>
 #include <rbus/rbus_object.h>
 #include <rbus/rbus_property.h>
@@ -147,3 +150,4 @@ int mqtt_retry(mqtt_timer_t *timer);
 void custom_log_callback(struct mosquitto *mosq, void *userdata, int level, const char *message);
 int password_callback(char *buf, int size, int rwflag, void *userdata);
 void initDisconnectTask();
+void print_mqtt_properties(const mosquitto_property *props);
